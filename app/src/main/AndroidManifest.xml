@@ -35,7 +35,8 @@
 
         <activity
                 android:name=".MapsActivity"
-                android:launchMode="singleInstance">
+                android:launchMode="singleInstance"
+                android:label="Location">
         </activity>
         <activity
                 android:name=".MainActivity"
@@ -66,7 +67,9 @@
             </intent-filter>
         </receiver>
 
-        <activity android:name=".MoreDetailsActivity">
+        <activity android:name=".MoreDetailsActivity"
+                  android:launchMode="singleInstance"
+                  android:label="More details">
         </activity>
     </application>
 

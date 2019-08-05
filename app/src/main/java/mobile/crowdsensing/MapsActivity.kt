@@ -18,6 +18,7 @@ import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.libraries.places.api.Places
@@ -134,21 +135,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarker
 
                     progressDialog?.dismiss()
                     showErrorAlert(exception.message)
-
-//                    val alertDialog: AlertDialog? = this?.let {
-//                        val builder = AlertDialog.Builder(it)
-//                        builder.apply {
-//                            setPositiveButton("Ok",
-//                                DialogInterface.OnClickListener { dialog, id ->
-//                                    goMainActivity()
-//                                })
-//                        }
-//
-//                        builder.setTitle("Error").setMessage(exception.message)
-//                        builder.create()
-//                    }
-//
-//                    alertDialog?.show()
                 }
             }
         } else {
@@ -173,14 +159,23 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarker
     override fun onMarkerClick(marker: Marker?): Boolean {
         val isCurrentPlace = intent.getStringExtra("CURRENT_PLACE")
         var placeId: String? = null
+        var placeName: String? = null
+        var placeAddress: String? = null
+        var placeLatLng: LatLng? = null
 
         if (isCurrentPlace.equals(false.toString())) {
             placeId = place!!.id
+            placeName = place!!.name
+            placeAddress = place!!.address
+            placeLatLng = place!!.latLng
 
         } else {
             for (place in restaurantPlaces) {
                 if (place.place.name == marker!!.title) {
                     placeId = place.place.id
+                    placeName = place.place.name
+                    placeAddress = place.place.address
+                    placeLatLng = place.place.latLng
                     break
                 }
             }
@@ -188,6 +183,10 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarker
 
         val intent = Intent(applicationContext, MoreDetailsActivity::class.java).apply {
             putExtra("PLACE_ID", placeId)
+            putExtra("PLACE_NAME", placeName)
+            putExtra("PLACE_ADDRESS", placeAddress)
+            putExtra("PLACE_LAT", placeLatLng?.latitude)
+            putExtra("PLACE_LNG", placeLatLng?.longitude)
         }
         startActivity(intent)
         return true

@@ -1,6 +1,6 @@
 package mobile.crowdsensing
 
-import android.app.TimePickerDialog
+import android.app.ProgressDialog
 import android.graphics.Color
 import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
@@ -13,25 +13,16 @@ import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.interfaces.datasets.ILineDataSet
-import android.graphics.Color.DKGRAY
-import android.support.v4.content.ContextCompat
-import android.graphics.drawable.Drawable
-import com.github.mikephil.charting.utils.Utils.getSDKInt
 import android.graphics.DashPathEffect
 import android.util.Log
 import android.view.View
-import android.widget.Toast
 import com.github.mikephil.charting.data.LineDataSet
-import com.github.mikephil.charting.utils.Utils
-import com.github.mikephil.charting.components.AxisBase
-import com.github.mikephil.charting.formatter.IAxisValueFormatter
 import com.github.mikephil.charting.components.XAxis
-import com.github.mikephil.charting.formatter.ValueFormatter
-import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.android.synthetic.main.activity_more_details.*
-import mobile.crowdsensing.R.id.chartLight
-import mobile.crowdsensing.R.id.chartTemp
 import java.util.*
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 
 
 class MoreDetailsActivity : AppCompatActivity() {
@@ -42,24 +33,32 @@ class MoreDetailsActivity : AppCompatActivity() {
     private var eventListener: ChildEventListener? = null
     private var childrenCount = AtomicLong()
     private lateinit var mChart: LineChart
+    private var progressDialog: ProgressDialog? = null
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_more_details)
-//        progressBar1.setVisibility(View.GONE);
-//        progressBar1.setVisibility(View.VISIBLE);
 
-        progressBar1.visibility= View.GONE
+        progressDialog = ProgressDialog(this)
+        progressDialog?.setProgressStyle(ProgressDialog.STYLE_SPINNER)
+        progressDialog?.setCancelable(true)
+        progressDialog?.setMessage("Loading...")
+        progressDialog?.show()
+
         mChart = findViewById(R.id.chartLight)
         mChart.setTouchEnabled(true)
         mChart.setPinchZoom(true)
-//        drawchart()
 
 
         supportActionBar!!.setDisplayHomeAsUpEnabled(true)
 
-        val placeId = "ChIJO-sXwEZF4joRSEUBy8P3pHE"
+        val placeId = intent.getStringExtra("PLACE_ID")
+        var placeName = intent.getStringExtra("PLACE_NAME")
+        var placeAddress = intent.getStringExtra("PLACE_ADDRESS")
+
+        placeNameTxt.text = "Place: " + placeName
+        placeAddresssTxt.text = "Address: " + placeAddress
 
         val database = FirebaseDatabase.getInstance()
         placeRef = database.getReference("$placeId")
@@ -109,37 +108,41 @@ class MoreDetailsActivity : AppCompatActivity() {
         var count = 0
         var mean_lux = 0.0f
         var likelihood = 0.0f
-        for (dataSnapshot in dataSnapshots) {
-            mean_lux = mean_lux + dataSnapshot.child("light").value.toString().toFloat() * dataSnapshot.child("likelihood").value.toString().toFloat()
-            likelihood=likelihood+dataSnapshot.child("likelihood").value.toString().toFloat().toString().toFloat()
-            values.add(Entry(dataSnapshot.key.toString().toFloat(), dataSnapshot.child("light").value.toString().toFloat()))
-//
 
-
-//            TODO("not implemented") // Select relevant data
+        if (dataSnapshots.isNotEmpty()) {
+            for (dataSnapshot in dataSnapshots) {
+                mean_lux =
+                    mean_lux + dataSnapshot.child("light").value.toString().toFloat() * dataSnapshot.child("likelihood").value.toString().toFloat()
+                likelihood =
+                    likelihood + dataSnapshot.child("likelihood").value.toString().toFloat().toString().toFloat()
+                values.add(
+                    Entry(
+                        dataSnapshot.key.toString().toFloat(),
+                        dataSnapshot.child("light").value.toString().toFloat()
+                    )
+                )
+            }
+            var mean_lux_final = ((mean_lux) / (likelihood)).toInt()
+            Log.i("MapsActivity", "mean lux total  " + mean_lux)
+            Log.i("MapsActivity", "likelihood lux total  " + likelihood)
+            Log.i("MapsActivity", "likelihood lux total  " + mean_lux_final)
+            var status = getlightstatus(mean_lux_final)
+            tv_status.text = status
+            tv_value.text = "Average lux value is :" + mean_lux_final.toString()
+            drawchart(values)
+        } else {
+            chartLight.visibility = View.GONE
+            chartTemp.visibility = View.GONE
+            tv_status.visibility = View.GONE
+            tv_value.visibility = View.GONE
+            progressDialog?.dismiss()
+            val text = "There are no captured data for this place"
+            val toast = Toast.makeText(applicationContext, text, Toast.LENGTH_LONG)
+            toast.show()
         }
-        var mean_lux_final=((mean_lux)/ ( likelihood)).toInt()
-        Log.i("MapsActivity", "mean lux total  " +  mean_lux)
-        Log.i("MapsActivity", "likelihood lux total  " +  likelihood)
-        Log.i("MapsActivity", "likelihood lux total  " +  mean_lux_final)
-        var status = getlightstatus(mean_lux_final)
-        tv_status.text = status
-        tv_value.text = "Average lux value is :"+mean_lux_final.toString()
-        drawchart(values)
-        progressBar1.setVisibility(View.GONE);
-
-
-//        TODO("not implemented") // Process selected data
     }
 
     private fun drawchart(values:ArrayList<Entry>){
-//        val values = ArrayList<Entry>()
-        val xVals = ArrayList<String>()
-        xVals.add("10")
-        xVals.add("20")
-//        values.add(Entry(1.toFloat(), 50.toFloat()))
-//        values.add(Entry(5.toFloat(), 100.toFloat()))
-
         val set1: LineDataSet
         if (mChart.getData() != null && mChart.getData().dataSetCount > 0) {
             set1 = mChart.getData().getDataSetByIndex(0) as LineDataSet
@@ -161,12 +164,6 @@ class MoreDetailsActivity : AppCompatActivity() {
             set1.formLineWidth = 1f
             set1.formLineDashEffect = DashPathEffect(floatArrayOf(10f, 5f), 0f)
             set1.formSize = 15f
-//            if (Utils.getSDKInt() >= 18) {
-//                val drawable = ContextCompat.getDrawable(this, R.drawable.tooltip_frame_dark)
-//                set1.fillDrawable = drawable
-//            } else {
-//                set1.fillColor = Color.DKGRAY
-//            }
             set1.fillColor = Color.DKGRAY
             val dataSets = ArrayList<ILineDataSet>()
             dataSets.add(set1)
@@ -177,13 +174,10 @@ class MoreDetailsActivity : AppCompatActivity() {
             xAxis.setGranularity(1f);
             xAxis.setLabelRotationAngle(-45F);
             xAxis.setValueFormatter(xAxisFormatter);
-//
-//            val xAxis = mChart.xAxis
-//            xAxis.position = XAxis.XAxisPosition.BOTTOM
-//            xAxis.setDrawGridLines(false)
-//            xAxis.setValueFormatter(IAxisValueFormatter { value, axis -> xVals.get(value.toInt()) } as ValueFormatter?)
+
             mChart.setData(data)
             mChart.invalidate()
+            progressDialog?.dismiss()
         }
 
 
@@ -229,6 +223,20 @@ class MoreDetailsActivity : AppCompatActivity() {
             return true
         }
         return super.onOptionsItemSelected(item)
+    }
+
+    fun openInGoogleMap(view: View) {
+        val placeName = intent.getStringExtra("PLACE_NAME")
+        val placeLat = intent.getDoubleExtra("PLACE_LAT", 0.toDouble())
+        val placeLng = intent.getDoubleExtra("PLACE_LNG", 0.toDouble())
+        val placeLatLng = placeLat.toString() + "," + placeLng.toString()
+        val uriString = "geo:" + placeLatLng + "?q=" + placeLatLng + "(" + placeName + ")"
+        val gmmIntentUri = Uri.parse(uriString)
+        val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri)
+        mapIntent.setPackage("com.google.android.apps.maps")
+        if (mapIntent.resolveActivity(packageManager) != null) {
+            startActivity(mapIntent)
+        }
     }
 
 //    fun getdate(view: View) {
