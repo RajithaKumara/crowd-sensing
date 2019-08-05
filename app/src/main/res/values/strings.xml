@@ -7,4 +7,5 @@
     <string name="tags_demo_label">Tags</string>
     <string name="tags_demo_details">Demonstrates how to get and set tags on API objects.</string>
     <string name="tags_demo_map_description">Map with a circle, ground overlay, marker, polygon and polyline.</string>
+    <string name="view_nearby_restaurants"><u>View nearby restaurants</u></string>
 </resources>

@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.hardware.*
+import android.media.MediaRecorder
 import android.os.IBinder
 import android.support.v4.content.ContextCompat
 import android.util.Log
@@ -16,6 +17,7 @@ import com.google.android.libraries.places.api.model.PlaceLikelihood
 import com.google.android.libraries.places.api.net.FindCurrentPlaceRequest
 import com.google.android.libraries.places.api.net.PlacesClient
 import com.google.firebase.database.FirebaseDatabase
+import java.io.IOException
 import java.lang.Exception
 import java.util.*
 
@@ -23,6 +25,7 @@ import java.util.*
 class MotionSensorService : Service(), SensorEventListener {
     private lateinit var sensorManager: SensorManager
     private var accelerometerSensor: Sensor? = null
+    private var proximitySensor: Sensor? = null
     private var temperatureSensor: Sensor? = null
     private var humiditySensor: Sensor? = null
     private var lightSensor: Sensor? = null
@@ -36,6 +39,7 @@ class MotionSensorService : Service(), SensorEventListener {
     private var temperatureReadings: MutableList<Float> = mutableListOf<Float>()
     private var humidityReadings: MutableList<Float> = mutableListOf<Float>()
     private var lightReadings: MutableList<Float> = mutableListOf<Float>()
+    private var splReading: Int? = null // Sound pressure level
 
     private lateinit var placesClient: PlacesClient
     private var restaurantPlaces: MutableList<PlaceLikelihood> = mutableListOf<PlaceLikelihood>()
@@ -56,8 +60,16 @@ class MotionSensorService : Service(), SensorEventListener {
             val delta = accelerationCurrent - accelerationLast
             acceleration = acceleration * 0.9f + delta
             if (acceleration > 3) {
+                sensorManager.registerListener(this, proximitySensor, SensorManager.SENSOR_DELAY_NORMAL)
+            }
+        } else if (event?.sensor!!.type === Sensor.TYPE_PROXIMITY) {
+            val distance = event!!.values[0]
+            if (!distance.equals(0.toFloat())) {
                 checkPlace()
             }
+            sensorManager.unregisterListener(this, proximitySensor)
+            Log.i("MotionSensorService", "TYPE_PROXIMITY: $distance")
+
         } else if (event?.sensor!!.type === Sensor.TYPE_AMBIENT_TEMPERATURE) {
             val x = event!!.values[0]
             if (temperatureReadings.size < SAMPLE_SIZE) {
@@ -67,8 +79,6 @@ class MotionSensorService : Service(), SensorEventListener {
                 sensorManager.unregisterListener(this, temperatureSensor)
                 getReadings()
             }
-
-
         } else if (event?.sensor!!.type === Sensor.TYPE_RELATIVE_HUMIDITY) {
             val x = event!!.values[0]
             if (humidityReadings.size < SAMPLE_SIZE) {
@@ -78,8 +88,6 @@ class MotionSensorService : Service(), SensorEventListener {
                 sensorManager.unregisterListener(this, humiditySensor)
                 getReadings()
             }
-
-
         } else if (event?.sensor!!.type === Sensor.TYPE_LIGHT) {
             val x = event!!.values[0]
             if (lightReadings.size < SAMPLE_SIZE) {
@@ -103,6 +111,8 @@ class MotionSensorService : Service(), SensorEventListener {
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         // Detect motion without using `TYPE_SIGNIFICANT_MOTION`
         accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        // To check whether device in pocket
+        proximitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY)
         // Crowd sensing sensors
         temperatureSensor = sensorManager.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE)
         humiditySensor = sensorManager.getDefaultSensor(Sensor.TYPE_RELATIVE_HUMIDITY)
@@ -116,7 +126,7 @@ class MotionSensorService : Service(), SensorEventListener {
     override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         Log.i("MotionSensorService", "onStartCommand()")
-        sensorManager.registerListener(this, accelerometerSensor, SensorManager.SENSOR_DELAY_UI)
+        sensorManager.registerListener(this, accelerometerSensor, SensorManager.SENSOR_DELAY_NORMAL)
 
         return START_STICKY
     }
@@ -197,7 +207,40 @@ class MotionSensorService : Service(), SensorEventListener {
             return
         }
 
-        pushReadings()
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            getNoiseReadings()
+        } else {
+            pushReadings()
+        }
+    }
+
+    private fun getNoiseReadings() {
+        var recorder = MediaRecorder().apply {
+            setAudioSource(MediaRecorder.AudioSource.MIC)
+            setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
+            setOutputFile("/dev/null")
+            setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+            setMaxDuration(2000)
+
+            try {
+                prepare()
+            } catch (e: IOException) {
+                Log.e("MotionSensorService", "prepare() failed")
+            }
+
+            start()
+            getMaxAmplitude()
+        }
+        recorder.setOnInfoListener { mr, what, extra ->
+            splReading = mr.maxAmplitude
+            mr.stop()
+            mr.release()
+            pushReadings()
+        }
     }
 
     private fun pushReadings() {
@@ -205,6 +248,7 @@ class MotionSensorService : Service(), SensorEventListener {
             val database = FirebaseDatabase.getInstance()
             for (place in restaurantPlaces) {
                 val placeId = place.place.id
+                Log.i("MotionSensorService", placeId)
                 val placeLikelihood = place.likelihood
                 val date = Date()
                 val timestamp = date.time
@@ -223,7 +267,10 @@ class MotionSensorService : Service(), SensorEventListener {
                     placeRef.child("light").setValue(lightReadings.average())
 
                 }
-
+                if (splReading != null) {
+                    val maxNoise = 20 * Math.log10((Math.abs(splReading!!)).toDouble())
+                    placeRef.child("noise").setValue(maxNoise)
+                }
             }
         } catch (e: Exception) {
 
@@ -233,6 +280,7 @@ class MotionSensorService : Service(), SensorEventListener {
             temperatureReadings.clear()
             humidityReadings.clear()
             lightReadings.clear()
+            splReading = null
 
             // Finish reading
             processing = false
@@ -241,13 +289,13 @@ class MotionSensorService : Service(), SensorEventListener {
 
     private fun registerSensorListeners() {
         if (temperatureSensor != null) {
-            sensorManager.registerListener(this, temperatureSensor, SensorManager.SENSOR_DELAY_UI)
+            sensorManager.registerListener(this, temperatureSensor, SensorManager.SENSOR_DELAY_NORMAL)
         }
         if (humiditySensor != null) {
-            sensorManager.registerListener(this, humiditySensor, SensorManager.SENSOR_DELAY_UI)
+            sensorManager.registerListener(this, humiditySensor, SensorManager.SENSOR_DELAY_NORMAL)
         }
         if (lightSensor != null) {
-            sensorManager.registerListener(this, lightSensor, SensorManager.SENSOR_DELAY_UI)
+            sensorManager.registerListener(this, lightSensor, SensorManager.SENSOR_DELAY_NORMAL)
         }
     }
 

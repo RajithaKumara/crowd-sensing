@@ -36,6 +36,7 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
     private var isShowAllResults: Boolean = false
 
     var PERMISSION_ACCESS_FINE_LOCATION = 0
+    var PERMISSION_RECORD_AUDIO = 1
 
     private val TRIGGER_SERACH = 1
     private val SEARCH_TRIGGER_DELAY_IN_MS: Long = 1000
@@ -45,6 +46,8 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
             if (msg.what === TRIGGER_SERACH) {
                 if (editText.text.isNotEmpty()) {
                     sendAutoCompleteQuery()
+                } else{
+                    clearLists()
                 }
             }
         }
@@ -97,7 +100,6 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
 
         val intent = Intent(applicationContext, MapsActivity::class.java).apply {
             putExtra("PLACE_ID", placeId)
-        }.apply {
             putExtra("CURRENT_PLACE", false.toString())
         }
         startActivity(intent)
@@ -106,6 +108,7 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
     override fun onResume() {
         super.onResume()
         getLocationPermission()
+        getRecordAudioPermission()
     }
 
     fun nearbySearch(view: View) {
@@ -147,10 +150,7 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
             ) == PackageManager.PERMISSION_GRANTED
         ) {
             placesClient.findAutocompletePredictions(request).addOnSuccessListener { response ->
-                listItems.clear()
-                listItemsAll.clear()
-                listAutocompletePredictions.clear()
-                listAutocompletePredictionsAll.clear()
+                clearLists()
                 for (autocompletePrediction in response.autocompletePredictions) {
                     Log.i(
                         "MainActivity", String.format(
@@ -192,6 +192,14 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
         }
     }
 
+    private fun clearLists() {
+        listItems.clear()
+        listItemsAll.clear()
+        listAutocompletePredictions.clear()
+        listAutocompletePredictionsAll.clear()
+        listView.adapter = ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, listItems)
+    }
+
     private fun getLocationPermission() {
         if (ContextCompat.checkSelfPermission(
                 this,
@@ -230,10 +238,30 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
         grantResults: IntArray
     ) {
         if (requestCode == PERMISSION_ACCESS_FINE_LOCATION) {
-            if (grantResults.size == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-
-            } else {
+            if (!(grantResults.size == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED)) {
                 textView.text = "This application not working without location permission."
+                textView.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    private fun getRecordAudioPermission(){
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            )
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            if (!ActivityCompat.shouldShowRequestPermissionRationale(
+                    this,
+                    Manifest.permission.RECORD_AUDIO
+                )
+            ) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.RECORD_AUDIO),
+                    PERMISSION_RECORD_AUDIO
+                )
             }
         }
     }
