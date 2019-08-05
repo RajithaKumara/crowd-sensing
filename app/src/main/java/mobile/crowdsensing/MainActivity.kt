@@ -22,6 +22,9 @@ import com.google.android.libraries.places.api.model.AutocompletePrediction
 import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
 import com.google.android.libraries.places.api.net.PlacesClient
 import kotlinx.android.synthetic.main.activity_main.*
+import android.app.ActivityManager
+import android.content.Context
+
 
 class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsResultCallback,
     AdapterView.OnItemClickListener {
@@ -46,7 +49,7 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
             if (msg.what === TRIGGER_SERACH) {
                 if (editText.text.isNotEmpty()) {
                     sendAutoCompleteQuery()
-                } else{
+                } else {
                     clearLists()
                 }
             }
@@ -62,8 +65,10 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
         textView.visibility = View.GONE
         showAllBtn.visibility = View.GONE
 
-        val intent = Intent(applicationContext, MotionSensorService::class.java)
-        startService(intent)
+        if (!isMyServiceRunning(MotionSensorService::class.java)) {
+            val intent = Intent(applicationContext, MotionSensorService::class.java)
+            startService(intent)
+        }
 
         Places.initialize(applicationContext, getString(R.string.google_maps_key))
         placesClient = Places.createClient(this)
@@ -172,7 +177,9 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
                 if (listItems.isEmpty()) {
                     textView.text = "No results found which are related to restaurant."
                     textView.visibility = View.VISIBLE
-                    showAllBtn.visibility = View.VISIBLE
+                    if (listItemsAll.isNotEmpty()) {
+                        showAllBtn.visibility = View.VISIBLE
+                    }
                 }
 
                 listView.adapter = ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, listItems)
@@ -245,7 +252,7 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
         }
     }
 
-    private fun getRecordAudioPermission(){
+    private fun getRecordAudioPermission() {
         if (ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.RECORD_AUDIO
@@ -264,5 +271,15 @@ class MainActivity : AppCompatActivity(), ActivityCompat.OnRequestPermissionsRes
                 )
             }
         }
+    }
+
+    private fun isMyServiceRunning(serviceClass: Class<*>): Boolean {
+        val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        for (service in manager.getRunningServices(Integer.MAX_VALUE)) {
+            if (serviceClass.name == service.service.className) {
+                return true
+            }
+        }
+        return false
     }
 }
